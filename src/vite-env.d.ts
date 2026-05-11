@@ -128,6 +128,7 @@ declare global {
       listInstalled(): Promise<{ success: boolean; packages: InstalledPackage[]; error?: string }>
       uninstallPackage(name: string): Promise<{ success: boolean; error?: string }>
       onUninstallLog(cb: (log: string) => void): () => void
+      launchApp(launcherPath: string): Promise<{ success: boolean; error?: string }>
       getSettings(): Promise<AppSettings>
       saveSettings(partial: Partial<AppSettings>): Promise<{ success: boolean }>
       fetchCatalog(): Promise<{ success: boolean; data?: CatalogData; error?: string }>

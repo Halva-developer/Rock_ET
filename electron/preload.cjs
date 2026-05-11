@@ -25,6 +25,7 @@ try {
       ipcRenderer.on('uninstall-log', h)
       return () => ipcRenderer.removeListener('uninstall-log', h)
     },
+    launchApp:        (p) => ipcRenderer.invoke('launch-app', p),
     getSettings:      ()  => ipcRenderer.invoke('get-settings'),
     saveSettings:     (s) => ipcRenderer.invoke('save-settings', s),
     fetchCatalog:     () => ipcRenderer.invoke('fetch-catalog'),

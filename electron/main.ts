@@ -703,6 +703,15 @@ ipcMain.handle('fetch-catalog', async () => {
   }
 })
 
+ipcMain.handle('launch-app', async (_, launcherPath: string) => {
+  try {
+    if (!existsSync(launcherPath)) return { success: false, error: 'Launcher не найден' }
+    const proc = spawn(launcherPath, [], { detached: true, stdio: 'ignore' })
+    proc.unref()
+    return { success: true }
+  } catch (e: any) { return { success: false, error: e.message } }
+})
+
 ipcMain.handle('download-package', async (event, url: string) => {
   const send = (msg: string) => event.sender.send('download-progress', msg)
   try {

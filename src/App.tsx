@@ -225,6 +225,7 @@ function CatalogPage({ onInstall, settings }: { onInstall: (info: PackageInfo) =
   const [category, setCategory]     = useState<string | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
   const [installMsg, setInstallMsg] = useState('')
+  const [installError, setInstallError] = useState<string | null>(null)
   const [infoTarget, setInfoTarget] = useState<CatalogPackage | null>(null)
 
   const load = useCallback(async () => {
@@ -244,15 +245,20 @@ function CatalogPage({ onInstall, settings }: { onInstall: (info: PackageInfo) =
   useEffect(() => { load() }, [load])
 
   const handleInstall = async (pkg: CatalogPackage) => {
-    setInstalling(pkg.name); setInstallMsg('⬇ Подключаемся...')
+    setInstalling(pkg.name); setInstallMsg('⬇ Подключаемся...'); setInstallError(null)
     const unsub = window.electronAPI.onDownloadProgress(msg => setInstallMsg(msg))
     const dlRes = await window.electronAPI.downloadPackage(pkg.downloadUrl)
     unsub()
-    if (!dlRes.success) { setInstalling(null); setInstallMsg(''); return }
+    if (!dlRes.success) {
+      setInstalling(null); setInstallMsg('')
+      setInstallError(`Не удалось загрузить «${pkg.name}»: ${dlRes.error ?? 'неизвестная ошибка'}`)
+      return
+    }
     setInstallMsg('📦 Читаем пакет...')
     const info = await window.electronAPI.readPackageInfo()
     setInstalling(null); setInstallMsg('')
     if (info.success) onInstall(info)
+    else setInstallError(`Ошибка чтения пакета: ${info.error}`)
   }
 
   const allCategories = catalog
@@ -356,6 +362,15 @@ function CatalogPage({ onInstall, settings }: { onInstall: (info: PackageInfo) =
           </div>
         )}
 
+        {installError && (
+          <motion.div className="alert-err" style={{ margin: '0 0 4px' }}
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+            ⚠ {installError}
+            <button style={{ marginLeft: 10, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 11 }}
+              onClick={() => setInstallError(null)}>✕</button>
+          </motion.div>
+        )}
+
         {!loading && !error && filtered.length > 0 && (
           <div className="cat-grid">
             {filtered.map(pkg => {
@@ -390,12 +405,12 @@ function CatalogPage({ onInstall, settings }: { onInstall: (info: PackageInfo) =
                       </button>
                     )}
                     <button
-                      className={`btn-launch cat-btn-install ${hasUpdate ? 'btn-update' : ''}`}
+                      className={`${hasUpdate ? 'btn-update' : 'btn-launch'} cat-btn-install`}
                       onClick={() => handleInstall(pkg)}
                       disabled={!!installing}
                     >
                       {installing === pkg.name
-                        ? <><div className="spinner" style={{width:14,height:14}}/> {installMsg || '...'}</>
+                        ? <><div className="spinner" style={{width:14,height:14,borderTopColor: hasUpdate ? 'var(--yellow)' : 'white'}}/> {installMsg || '...'}</>
                         : hasUpdate ? '↑ Обновить' : isInstalled ? '↻ Переустановить' : '🚀 Установить'}
                     </button>
                   </div>
@@ -908,6 +923,8 @@ function InstalledPage() {
   const [packages, setPackages] = useState<InstalledPackage[]>([])
   const [loading, setLoading]   = useState(true)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [launching, setLaunching] = useState<string | null>(null)
+  const [launchMsg, setLaunchMsg] = useState<{ name: string; ok: boolean; text: string } | null>(null)
   const [logs, setLogs]         = useState<string[]>([])
   const [error, setError]       = useState<string | null>(null)
 
@@ -928,6 +945,15 @@ function InstalledPage() {
     await load()
   }
 
+  const handleLaunch = async (pkg: InstalledPackage) => {
+    if (!pkg.launcherPath) return
+    setLaunching(pkg.name)
+    const res = await window.electronAPI.launchApp(pkg.launcherPath)
+    setLaunching(null)
+    setLaunchMsg({ name: pkg.name, ok: res.success, text: res.success ? 'Запущено!' : (res.error ?? 'Ошибка запуска') })
+    setTimeout(() => setLaunchMsg(null), 3000)
+  }
+
   if (loading) return (
     <div className="page-content center-page">
       <div className="spinner lg"/>
@@ -943,6 +969,15 @@ function InstalledPage() {
       </div>
 
       {error && <div className="alert-err">{error}</div>}
+      <AnimatePresence>
+        {launchMsg && (
+          <motion.div className={`alert-err`}
+            style={launchMsg.ok ? { background: 'rgba(52,211,153,.08)', borderColor: 'rgba(52,211,153,.28)', color: 'var(--green)' } : {}}
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            {launchMsg.ok ? '✅' : '⚠'} {launchMsg.name}: {launchMsg.text}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {packages.length === 0 ? (
         <div className="empty-state">
@@ -973,9 +1008,17 @@ function InstalledPage() {
                   </p>
                 </div>
               </div>
-              <button className="btn-remove" onClick={() => handleUninstall(pkg.name)} disabled={removing === pkg.name}>
-                {removing === pkg.name ? <div className="spinner"/> : '🗑 Удалить'}
-              </button>
+              <div style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
+                {pkg.launcherPath && (
+                  <button className="btn-launch" style={{ padding: '7px 14px', fontSize: 12, flexShrink: 0, boxShadow: 'none' }}
+                    onClick={() => handleLaunch(pkg)} disabled={launching === pkg.name}>
+                    {launching === pkg.name ? <div className="spinner" style={{width:12,height:12}}/> : '▶ Запустить'}
+                  </button>
+                )}
+                <button className="btn-remove" onClick={() => handleUninstall(pkg.name)} disabled={removing === pkg.name || launching === pkg.name}>
+                  {removing === pkg.name ? <div className="spinner"/> : '🗑 Удалить'}
+                </button>
+              </div>
             </motion.div>
           ))}
         </div>
@@ -1047,136 +1090,141 @@ function SettingsPage({ settings, onUpdate }: { settings: AppSettings; onUpdate:
       {/* ── Внешний вид ── */}
       <div className="glass card-block">
         <p className="block-title">🎨 Внешний вид</p>
-        <div className="stg-section">
-          <p className="stg-label">Тема оформления</p>
-          <div className="theme-grid">
-            {THEME_DEFS.map(t => (
-              <button
-                key={t.id}
-                className={`theme-card ${settings.theme === t.id ? 'active' : ''}`}
-                onClick={() => onUpdate({ theme: t.id })}
-              >
-                <div className="tc-preview" style={{ background: t.bg }}>
-                  <div className="tc-sidebar" style={{ background: t.surf }}/>
-                  <div className="tc-content">
-                    <div className="tc-bar" style={{ background: t.accent }}/>
-                    <div className="tc-lines">
-                      <div style={{ background: t.text, opacity: .6 }}/>
-                      <div style={{ background: t.text, opacity: .3 }}/>
-                      <div style={{ background: t.text, opacity: .2, width: '60%' }}/>
-                    </div>
+        <p className="stg-label">Тема оформления</p>
+        <div className="theme-grid">
+          {THEME_DEFS.map(t => (
+            <button
+              key={t.id}
+              className={`theme-card ${settings.theme === t.id ? 'active' : ''}`}
+              onClick={() => onUpdate({ theme: t.id })}
+            >
+              <div className="tc-preview" style={{ background: t.bg }}>
+                <div className="tc-sidebar" style={{ background: t.surf }}/>
+                <div className="tc-content">
+                  <div className="tc-bar" style={{ background: t.accent }}/>
+                  <div className="tc-lines">
+                    <div style={{ background: t.text, opacity: .6 }}/>
+                    <div style={{ background: t.text, opacity: .3 }}/>
+                    <div style={{ background: t.text, opacity: .2, width: '60%' }}/>
                   </div>
-                  {settings.theme === t.id && <div className="tc-check">✓</div>}
                 </div>
-                <span className="tc-label">{t.label}</span>
-              </button>
-            ))}
+                {settings.theme === t.id && <div className="tc-check">✓</div>}
+              </div>
+              <span className="tc-label">{t.label}</span>
+            </button>
+          ))}
+        </div>
+        <div className="stg-row">
+          <div>
+            <span className="stg-row-label">Анимации</span>
+            <span className="stg-row-sub">Переходы и плавные эффекты интерфейса</span>
           </div>
-
-          <div className="stg-row">
-            <div>
-              <span className="stg-row-label">Анимации</span>
-              <span className="stg-row-sub">Переходы и плавные эффекты</span>
-            </div>
-            <Toggle value={settings.animations} onChange={v => onUpdate({ animations: v })}/>
-          </div>
+          <Toggle value={settings.animations} onChange={v => onUpdate({ animations: v })}/>
         </div>
       </div>
 
       {/* ── Источники пакетов ── */}
       <div className="glass card-block">
         <p className="block-title">📡 Источники пакетов</p>
-        <div className="stg-section">
-          <p className="stg-label">URL каталога</p>
-          <div className="stg-url-row">
-            <input
-              className="stg-input"
-              value={catUrlDraft}
-              onChange={e => setCatUrlDraft(e.target.value)}
-              placeholder="https://raw.githubusercontent.com/..."
-              spellCheck={false}
-            />
-          </div>
-          <div className="stg-url-actions">
-            <button className="btn-ghost sm" onClick={() => setCatUrlDraft(DEFAULT_SETTINGS.catalogUrl)}>
-              ↩ По умолчанию
-            </button>
-            <button className="btn-ghost sm" onClick={testUrl} disabled={testing}>
-              {testing ? <><div className="spinner" style={{width:10,height:10}}/> Проверка...</> : '🔌 Проверить'}
-            </button>
-            <button className="btn-launch" style={{padding:'6px 14px',fontSize:12}} onClick={saveCatalogUrl}
-              disabled={catUrlDraft === settings.catalogUrl}>
-              Сохранить
-            </button>
-          </div>
-          {testResult && (
-            <div className={`stg-test-result ${testResult.ok ? 'ok' : 'err'}`}>
-              {testResult.ok ? '✅' : '❌'} {testResult.msg}
-            </div>
-          )}
+        <p className="stg-label">URL каталога</p>
+        <div className="stg-url-row">
+          <input
+            className="stg-input"
+            value={catUrlDraft}
+            onChange={e => { setCatUrlDraft(e.target.value); setTestResult(null) }}
+            placeholder="https://raw.githubusercontent.com/..."
+            spellCheck={false}
+          />
         </div>
+        <div className="stg-url-actions">
+          <button className="btn-ghost sm" onClick={() => { setCatUrlDraft(DEFAULT_SETTINGS.catalogUrl); setTestResult(null) }}>
+            ↩ Сбросить
+          </button>
+          <button className="btn-ghost sm" onClick={testUrl} disabled={testing}>
+            {testing ? <><div className="spinner" style={{width:10,height:10}}/>&nbsp;Проверка...</> : '🔌 Проверить'}
+          </button>
+          <button className="btn-launch" style={{padding:'6px 14px',fontSize:12}} onClick={saveCatalogUrl}
+            disabled={catUrlDraft === settings.catalogUrl}>
+            Сохранить
+          </button>
+        </div>
+        {testResult && (
+          <div className={`stg-test-result ${testResult.ok ? 'ok' : 'err'}`}>
+            {testResult.ok ? '✅' : '❌'} {testResult.msg}
+          </div>
+        )}
       </div>
 
       {/* ── Установка ── */}
       <div className="glass card-block">
         <p className="block-title">📦 Установка</p>
-        <div className="stg-section">
-          <div className="stg-row">
-            <div>
-              <span className="stg-row-label">Режим по умолчанию</span>
-              <span className="stg-row-sub">Sandbox (bwrap) или Глобальная (pkexec)</span>
-            </div>
-            <div className="stg-mode-btns">
-              {(['sandbox','global'] as const).map(m => (
-                <button key={m} className={`stg-mode-btn ${settings.defaultInstallMode === m ? 'active' : ''}`}
-                  onClick={() => onUpdate({ defaultInstallMode: m })}>
-                  {m === 'sandbox' ? '🔒 Sandbox' : '🌍 Global'}
-                </button>
-              ))}
-            </div>
+        <p className="stg-label">Режим по умолчанию</p>
+        <div className="stg-mode-btns" style={{ padding: '4px 16px 14px' }}>
+          {(['sandbox','global'] as const).map(m => (
+            <button key={m} className={`stg-mode-btn ${settings.defaultInstallMode === m ? 'active' : ''}`}
+              onClick={() => onUpdate({ defaultInstallMode: m })}>
+              <span className="stg-mode-icon">{m === 'sandbox' ? '🔒' : '🌍'}</span>
+              {m === 'sandbox' ? 'Sandbox (bwrap)' : 'Глобальная (pkexec)'}
+              <span className="stg-mode-sub">{m === 'sandbox' ? '~/.local/bin' : '/usr/local/bin'}</span>
+            </button>
+          ))}
+        </div>
+        <div className="stg-row">
+          <div>
+            <span className="stg-row-label">Проверять обновления</span>
+            <span className="stg-row-sub">Сравнивать версии при открытии каталога</span>
           </div>
-          <div className="stg-row">
-            <div>
-              <span className="stg-row-label">Проверять обновления</span>
-              <span className="stg-row-sub">При открытии каталога</span>
-            </div>
-            <Toggle value={settings.checkUpdates} onChange={v => onUpdate({ checkUpdates: v })}/>
-          </div>
+          <Toggle value={settings.checkUpdates} onChange={v => onUpdate({ checkUpdates: v })}/>
         </div>
       </div>
 
       {/* ── Система ── */}
       <div className="glass card-block">
         <p className="block-title">🖥 Система</p>
-        <div className="settings-rows">
-          <div className="srow"><span className="srow-label">Дистрибутив</span><span className="srow-val">{info?.distro ?? '...'}</span></div>
-          <div className="srow"><span className="srow-label">Home</span><code className="srow-val">{info?.homeDir ?? '...'}</code></div>
-          <div className="srow"><span className="srow-label">Rock_ET data</span><code className="srow-val">{info?.rockEtDir ?? '...'}</code></div>
-          <div className="srow">
-            <span className="srow-label">bubblewrap</span>
-            <span className={`srow-val ${info?.bwrapAvailable ? 'text-green' : 'text-red'}`}>
+        <div className="sys-grid">
+          <div className="sys-item">
+            <span className="sys-key">Дистрибутив</span>
+            <span className="sys-val">{info?.distro ?? '...'}</span>
+          </div>
+          <div className="sys-item">
+            <span className="sys-key">bubblewrap</span>
+            <span className={`sys-val ${info == null ? '' : info.bwrapAvailable ? 'ok' : 'bad'}`}>
               {info == null ? '...' : info.bwrapAvailable ? `✅ ${info.bwrapVersion}` : '❌ Не установлен'}
             </span>
           </div>
-          {!info?.bwrapAvailable && info != null && (
-            <div className="bwrap-hint">
-              <pre className="tm-code" style={{margin:0}}>{`sudo apt install bubblewrap     # Debian/Ubuntu
+          <div className="sys-item" style={{ gridColumn: '1/-1' }}>
+            <span className="sys-key">Rock_ET data</span>
+            <span className="sys-val">{info?.rockEtDir ?? '...'}</span>
+          </div>
+        </div>
+        {!info?.bwrapAvailable && info != null && (
+          <div className="bwrap-hint" style={{ margin: '0 16px 14px' }}>
+            <pre className="tm-code" style={{margin:0}}>{`sudo apt install bubblewrap     # Debian/Ubuntu
 sudo pacman -S bubblewrap       # Arch Linux
 sudo dnf install bubblewrap     # Fedora`}</pre>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ── О приложении ── */}
       <div className="glass card-block">
         <p className="block-title">ℹ О Rock_ET</p>
-        <div className="settings-rows">
-          <div className="srow"><span className="srow-label">Версия</span><span className="srow-val">0.1.0 alpha</span></div>
-          <div className="srow"><span className="srow-label">Стек</span><span className="srow-val">Electron 32 · React 19 · Vite 8 · TypeScript</span></div>
-          <div className="srow"><span className="srow-label">Формат</span><span className="srow-val">.rckt (tar.gz, v1)</span></div>
-          <div className="srow"><span className="srow-label">Sandbox</span><span className="srow-val">bubblewrap (bwrap)</span></div>
-          <div className="srow"><span className="srow-label">Лицензия</span><span className="srow-val">MIT</span></div>
+        <div className="stg-about">
+          <div className="stg-about-logo"><RocketLogo size={52} uid="stg"/></div>
+          <div>
+            <div className="stg-about-name">Rock_ET</div>
+            <div className="stg-about-ver">v0.1.0 alpha · MIT · Electron 32 + React 19</div>
+            <div className="stg-about-links">
+              <a className="stg-link" href="https://github.com/Halva-developer/Rock_ET"
+                onClick={e => { e.preventDefault(); /* open in browser via shell */ }}>
+                GitHub
+              </a>
+              <a className="stg-link" href="https://github.com/Halva-developer/ROCK_ET-packages-"
+                onClick={e => { e.preventDefault() }}>
+                Пакеты
+              </a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
