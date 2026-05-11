@@ -694,8 +694,12 @@ ipcMain.handle('save-settings', async (_, partial: Partial<AppSettings>) => {
 ipcMain.handle('fetch-catalog', async () => {
   try {
     const { catalogUrl } = await readSettings()
-    const res = await fetch(catalogUrl, { signal: AbortSignal.timeout(12_000) })
-    if (!res.ok) throw new Error(`HTTP ${res.status} — каталог недоступен`)
+    const res = await fetch(catalogUrl, {
+      signal: AbortSignal.timeout(12_000),
+      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+      cache: 'no-store',
+    } as RequestInit)
+    if (!res.ok) throw new Error(`HTTP ${res.status} — каталог недоступен (${catalogUrl})`)
     const data = await res.json()
     return { success: true, data }
   } catch (e: any) {
@@ -716,8 +720,12 @@ ipcMain.handle('download-package', async (event, url: string) => {
   const send = (msg: string) => event.sender.send('download-progress', msg)
   try {
     send(`⬇ Загрузка ${url.split('/').pop()}...`)
-    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(60_000),
+      headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+      cache: 'no-store',
+    } as RequestInit)
+    if (!res.ok) throw new Error(`HTTP ${res.status} при загрузке ${url}`)
     const buf = await res.arrayBuffer()
     const tmp = path.join(os.tmpdir(), `rocket-catalog-${Date.now()}.rckt`)
     await fs.writeFile(tmp, Buffer.from(buf))

@@ -3,6 +3,31 @@ import { motion, AnimatePresence } from 'framer-motion'
 import type { PackageInfo, RcktConfig, ScriptAnalysis, InstalledPackage, SystemInfo, CatalogPackage, CatalogData, AppSettings } from './vite-env'
 import './App.css'
 
+function useCopy() {
+  const [copied, setCopied] = useState<string | null>(null)
+  const copy = useCallback((text: string, id = 'default') => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(id)
+      setTimeout(() => setCopied(null), 1800)
+    }).catch(() => {})
+  }, [])
+  return { copy, copied }
+}
+
+function CopyBtn({ text, id, label = '📋' }: { text: string; id?: string; label?: string }) {
+  const { copy, copied } = useCopy()
+  const key = id ?? text.slice(0, 16)
+  return (
+    <button
+      className="copy-btn"
+      onClick={e => { e.stopPropagation(); copy(text, key) }}
+      title="Скопировать"
+    >
+      {copied === key ? '✓' : label}
+    </button>
+  )
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   catalogUrl: 'https://raw.githubusercontent.com/Halva-developer/ROCK_ET-packages-/main/catalog.json',
@@ -334,8 +359,11 @@ function CatalogPage({ onInstall, settings }: { onInstall: (info: PackageInfo) =
           <div className="cat-error">
             <span className="cat-err-icon">📡</span>
             <h3>Не удалось загрузить каталог</h3>
-            <p>{error}</p>
-            <p className="cat-err-hint">Проверьте подключение к интернету</p>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{error}</span>
+              <CopyBtn text={error} id="cat-load-err"/>
+            </p>
+            <p className="cat-err-hint">Проверьте подключение к интернету или URL каталога в настройках</p>
             <button className="btn-ghost" onClick={load}>↻ Попробовать снова</button>
           </div>
         )}
@@ -363,11 +391,11 @@ function CatalogPage({ onInstall, settings }: { onInstall: (info: PackageInfo) =
         )}
 
         {installError && (
-          <motion.div className="alert-err" style={{ margin: '0 0 4px' }}
+          <motion.div className="alert-err" style={{ margin: '0 0 4px', display: 'flex', alignItems: 'flex-start', gap: 8 }}
             initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-            ⚠ {installError}
-            <button style={{ marginLeft: 10, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 11 }}
-              onClick={() => setInstallError(null)}>✕</button>
+            <span style={{ flex: 1 }}>⚠ {installError}</span>
+            <CopyBtn text={installError} id="cat-err"/>
+            <button className="copy-btn" onClick={() => setInstallError(null)} title="Закрыть">✕</button>
           </motion.div>
         )}
 
@@ -604,8 +632,10 @@ function InstallPage({ initialInfo, onClearInitial, defaultInstallMode = 'sandbo
             </div>
 
             {loadError && (
-              <motion.div className="alert-err" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-                ⚠ {loadError}
+              <motion.div className="alert-err" style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}
+                initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+                <span style={{ flex: 1 }}>⚠ {loadError}</span>
+                <CopyBtn text={loadError} id="load-err"/>
               </motion.div>
             )}
 
@@ -782,6 +812,7 @@ function InstallPage({ initialInfo, onClearInitial, defaultInstallMode = 'sandbo
                 <div className="tm-bar">
                   <span className="tmd r"/><span className="tmd y"/><span className="tmd g"/>
                   <span className="tm-fn">config.yaml</span>
+                  <CopyBtn text={pkgInfo.configYaml ?? ''} id="cfg-yaml" label="📋 Скопировать"/>
                 </div>
                 <pre className="tm-code">{pkgInfo.configYaml}</pre>
               </div>
@@ -859,6 +890,7 @@ function InstallPage({ initialInfo, onClearInitial, defaultInstallMode = 'sandbo
               <div className="tm-bar">
                 <span className="tmd r"/><span className="tmd y"/><span className="tmd g"/>
                 <span className="tm-fn">live output</span>
+                <CopyBtn text={logs.join('\n')} id="install-log" label="📋 Скопировать лог"/>
               </div>
               <div className="tm-scroll">
                 {logs.length === 0 && <div className="log muted">Ожидание вывода...</div>}
@@ -882,7 +914,10 @@ function InstallPage({ initialInfo, onClearInitial, defaultInstallMode = 'sandbo
             <h2 className={result.success ? 'ok' : 'err'}>
               {result.success ? 'Установка успешна!' : 'Ошибка установки'}
             </h2>
-            <p className="result-msg">{result.message}</p>
+            <p className="result-msg" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+              <span>{result.message}</span>
+              {!result.success && <CopyBtn text={result.message} id="result-err"/>}
+            </p>
             {result.success && (
               <div className="summary-bar success">
                 ✅ {targetEnv === 'sandbox' ? `Sandbox: ${targetBin}` : `Установлено в ${targetBin}`}
@@ -892,6 +927,7 @@ function InstallPage({ initialInfo, onClearInitial, defaultInstallMode = 'sandbo
               <div className="tm-bar">
                 <span className="tmd r"/><span className="tmd y"/><span className="tmd g"/>
                 <span className="tm-fn">Лог установки</span>
+                <CopyBtn text={logs.join('\n')} id="done-log" label="📋 Скопировать лог"/>
               </div>
               <div className="tm-scroll" style={{ maxHeight: 180 }}>
                 {logs.map((l, i) => <div key={i} className="log">{l}</div>)}
@@ -1029,6 +1065,7 @@ function InstalledPage() {
           <div className="tm-bar">
             <span className="tmd r"/><span className="tmd y"/><span className="tmd g"/>
             <span className="tm-fn">uninstall log</span>
+            <CopyBtn text={logs.join('\n')} id="uninst-log" label="📋 Скопировать лог"/>
           </div>
           <div className="tm-scroll">
             {logs.map((l, i) => <div key={i} className="log">{l}</div>)}

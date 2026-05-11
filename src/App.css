@@ -306,6 +306,17 @@ body { background: var(--bg); color: var(--text); user-select: none; overflow: h
 .step-more  { font-size: 11px; color: var(--muted); }
 .hl { font-family: monospace; font-size: 11px; color: var(--accent); background: rgba(255,95,31,.1); padding: 1px 5px; border-radius: 3px; }
 
+/* ── Copy button ──────────────────────────────────────────────────────────── */
+.copy-btn {
+  flex-shrink: 0;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  color: var(--muted); border-radius: 5px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  line-height: 1.6; white-space: nowrap;
+}
+.copy-btn:hover { background: rgba(255,255,255,.1); color: var(--text); border-color: var(--bdr2); }
+
 /* ── Terminal mini ────────────────────────────────────────────────────────── */
 .terminal-mini { border-top: 1px solid var(--bdr); }
 .tm-bar {
